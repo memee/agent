@@ -15,30 +15,61 @@ def test_delegate_in_openai_schema():
     assert any(s["function"]["name"] == "delegate" for s in schemas)
 
 
-def test_delegate_uses_scoped_tools(monkeypatch):
-    """delegate should call run() with only the tools from the given group."""
+def test_delegate_uses_profile_tools(monkeypatch):
+    """delegate should call run() with only the tools listed in the profile."""
     from agent.builtin_tools import delegate as delegate_module
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, max_iterations=10):
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10):
         captured["tools"] = tools
+        captured["model"] = model
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
     monkeypatch.setattr(delegate_module, "openai", MagicMock())
 
     tools.execute("delegate", {
-        "system_prompt": "You are a helper.",
-        "task": "Do something.",
-        "group": "builtin",
-        "model": "gpt-4o-mini",
+        "profile": "researcher",
+        "task": "Find information about Python.",
     })
 
-    # Only builtin-group tools should be passed
+    # Only researcher profile tools should be passed
     assert captured["tools"] is not None
     names_passed = [t["function"]["name"] for t in captured["tools"]]
-    assert "delegate" in names_passed
+    assert "http_get" in names_passed
+    assert "read_file" in names_passed
+    assert "delegate" not in names_passed  # delegate is not in researcher profile
+
+
+def test_delegate_uses_profile_model(monkeypatch):
+    """delegate should use the model from the profile."""
+    from agent.builtin_tools import delegate as delegate_module
+
+    captured = {}
+
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10):
+        captured["model"] = model
+        return "done"
+
+    monkeypatch.setattr(delegate_module, "run", fake_run)
+    monkeypatch.setattr(delegate_module, "openai", MagicMock())
+
+    tools.execute("delegate", {"profile": "researcher", "task": "some task"})
+    assert captured["model"] == "gpt-4o-mini"
+
+
+# Task 5.5: delegate schema reflects loaded profiles
+def test_delegate_schema_profile_enum_matches_registry():
+    """delegate tool schema 'profile' enum contains exactly the loaded profile names."""
+    from agent.profile import profile_registry
+
+    schemas = tools.to_openai_schema("builtin")
+    delegate_schema = next(s for s in schemas if s["function"]["name"] == "delegate")
+    profile_param = delegate_schema["function"]["parameters"]["properties"]["profile"]
+
+    assert "enum" in profile_param
+    assert set(profile_param["enum"]) == set(profile_registry.names())
 
 
 def test_hello_world_registered():

@@ -36,6 +36,14 @@ class ToolsRegistry:
             if group is None or entry["group"] == group
         ]
 
+    def to_openai_schema_by_names(self, names: list[str]) -> list[dict]:
+        """Return OpenAI tool dicts for the given list of tool names."""
+        return [
+            self._tools[name]["schema"]
+            for name in names
+            if name in self._tools
+        ]
+
     def execute(self, name: str, args: dict, sandbox: SandboxConfig | None = None) -> Any:
         """Call registered tool by name with given arguments, applying validators first."""
         if name not in self._tools:
