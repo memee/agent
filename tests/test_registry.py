@@ -1,5 +1,7 @@
 import pytest
 from agent.registry import ToolsRegistry
+from agent.sandbox import FileSandbox, HttpSandbox, SandboxConfig
+from agent.validators import Validator
 
 
 @pytest.fixture
@@ -110,3 +112,161 @@ def test_schema_required_reflects_defaults(registry: ToolsRegistry):
     params = schema["function"]["parameters"]
     assert "required" in params["required"]
     assert "optional" not in params["required"]
+
+
+# ---------------------------------------------------------------------------
+# Validator and sandbox integration
+# ---------------------------------------------------------------------------
+
+def test_execute_applies_validator(registry: ToolsRegistry):
+    calls = []
+
+    def double_validator(value, sandbox: SandboxConfig):
+        calls.append(value)
+        return value * 2
+
+    @registry.register("use_x", validators={"x": double_validator})
+    def use_x(x: int) -> int:
+        """Use x."""
+        return x
+
+    result = registry.execute("use_x", {"x": 3})
+    assert result == 6  # validator doubled it
+    assert calls == [3]
+
+
+def test_execute_without_validators_calls_tool_directly(registry: ToolsRegistry):
+    @registry.register("identity")
+    def identity(x: str) -> str:
+        """Identity."""
+        return x
+
+    assert registry.execute("identity", {"x": "hello"}) == "hello"
+
+
+def test_execute_defaults_to_sandbox_default_when_none(registry: ToolsRegistry):
+    received_sandbox = []
+
+    def capture_sandbox(value, sandbox: SandboxConfig):
+        received_sandbox.append(sandbox)
+        return value
+
+    @registry.register("check", validators={"v": capture_sandbox})
+    def check(v: str) -> str:
+        """Check."""
+        return v
+
+    registry.execute("check", {"v": "x"})
+    assert received_sandbox[0] == SandboxConfig.default()
+
+
+def test_execute_uses_provided_sandbox(registry: ToolsRegistry):
+    received_sandbox = []
+
+    def capture_sandbox(value, sandbox: SandboxConfig):
+        received_sandbox.append(sandbox)
+        return value
+
+    @registry.register("check2", validators={"v": capture_sandbox})
+    def check2(v: str) -> str:
+        """Check2."""
+        return v
+
+    off = SandboxConfig.off()
+    registry.execute("check2", {"v": "x"}, sandbox=off)
+    assert received_sandbox[0] is off
+
+
+def test_execute_injects_sandbox_to_tool(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("needs_sandbox")
+    def needs_sandbox(x: str, sandbox: SandboxConfig = SandboxConfig.default()) -> str:
+        """Needs sandbox."""
+        received.append(sandbox)
+        return x
+
+    explicit = SandboxConfig.strict(file_base_dir=__import__("pathlib").Path("/tmp"))
+    registry.execute("needs_sandbox", {"x": "hi"}, sandbox=explicit)
+    assert received[0] is explicit
+
+
+def test_sandbox_param_hidden_from_schema(registry: ToolsRegistry):
+    @registry.register("with_sandbox")
+    def with_sandbox(x: str, sandbox: SandboxConfig = SandboxConfig.default()) -> str:
+        """With sandbox."""
+        return x
+
+    schema = registry.to_openai_schema()[0]
+    props = schema["function"]["parameters"]["properties"]
+    assert "sandbox" not in props
+    assert "x" in props
+
+
+# ---------------------------------------------------------------------------
+# Domain routing
+# ---------------------------------------------------------------------------
+
+def test_execute_domain_routes_filesystem_sub_config(registry: ToolsRegistry):
+    received = []
+
+    def capture(value, sandbox):
+        received.append(sandbox)
+        return value
+
+    @registry.register("fs_tool", domain="filesystem", validators={"v": capture})
+    def fs_tool(v: str) -> str:
+        """Filesystem tool."""
+        return v
+
+    cfg = SandboxConfig.strict(file_base_dir=__import__("pathlib").Path("/tmp"))
+    registry.execute("fs_tool", {"v": "x"}, sandbox=cfg)
+    assert isinstance(received[0], FileSandbox)
+    assert received[0] is cfg.filesystem
+
+
+def test_execute_domain_routes_http_sub_config(registry: ToolsRegistry):
+    received = []
+
+    def capture(value, sandbox):
+        received.append(sandbox)
+        return value
+
+    @registry.register("http_tool", domain="http", validators={"v": capture})
+    def http_tool(v: str) -> str:
+        """HTTP tool."""
+        return v
+
+    cfg = SandboxConfig.strict(file_base_dir=__import__("pathlib").Path("/tmp"))
+    registry.execute("http_tool", {"v": "x"}, sandbox=cfg)
+    assert isinstance(received[0], HttpSandbox)
+    assert received[0] is cfg.http
+
+
+def test_execute_domain_injects_sub_config_to_tool(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("fs_inject", domain="filesystem")
+    def fs_inject(x: str, sandbox: FileSandbox = FileSandbox.default()) -> str:
+        """Needs FileSandbox."""
+        received.append(sandbox)
+        return x
+
+    cfg = SandboxConfig(filesystem=FileSandbox.strict(__import__("pathlib").Path("/tmp")))
+    registry.execute("fs_inject", {"x": "hi"}, sandbox=cfg)
+    assert isinstance(received[0], FileSandbox)
+    assert received[0] is cfg.filesystem
+
+
+def test_execute_no_domain_passes_full_sandbox(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("no_domain")
+    def no_domain(x: str, sandbox: SandboxConfig = SandboxConfig.default()) -> str:
+        """No domain tool."""
+        received.append(sandbox)
+        return x
+
+    cfg = SandboxConfig.off()
+    registry.execute("no_domain", {"x": "hi"}, sandbox=cfg)
+    assert received[0] is cfg

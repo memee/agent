@@ -1,6 +1,8 @@
 import inspect
 from typing import Callable, get_type_hints
 
+# Parameters with these names are injected by the registry and hidden from LLM schemas.
+_REGISTRY_INJECTED_PARAMS = {"sandbox"}
 
 _TYPE_MAP: dict[type, str] = {
     str: "string",
@@ -20,6 +22,8 @@ def function_to_tool_schema(name: str, fn: Callable) -> dict:
 
     for param_name, param in sig.parameters.items():
         if param_name == "return":
+            continue
+        if param_name in _REGISTRY_INJECTED_PARAMS:
             continue
 
         hint = hints.get(param_name)

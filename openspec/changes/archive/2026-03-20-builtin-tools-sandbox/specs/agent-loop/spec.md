@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: run() drives the tool-call cycle
 
@@ -43,15 +43,3 @@ returns a message with no `tool_calls`.
 
 - **WHEN** `run()` is called without a `sandbox` argument
 - **THEN** `registry.execute()` is called with `SandboxConfig.default()`
-
-### Requirement: run() appends all turns to Conversation
-
-`run()` SHALL mutate the passed `Conversation` by appending every assistant
-message and every tool result so the caller retains the full history after
-the call.
-
-#### Scenario: History preserved after run
-
-- **WHEN** `run()` completes after one tool-call cycle
-- **THEN** the `Conversation.messages` list contains the original messages plus
-  the assistant tool-call message and the tool result message

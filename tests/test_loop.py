@@ -4,6 +4,7 @@ import pytest
 from agent.conversation import Conversation
 from agent.run import run
 from agent.registry import ToolsRegistry
+from agent.sandbox import SandboxConfig
 
 
 def _make_text_response(content: str) -> MagicMock:
@@ -121,3 +122,60 @@ def test_conversation_mutated_after_run():
     assert len(conv.messages) == initial_len + 3
     roles = [m["role"] for m in conv.messages]
     assert roles == ["user", "assistant", "tool", "assistant"]
+
+
+# ---------------------------------------------------------------------------
+# Sandbox forwarding
+# ---------------------------------------------------------------------------
+
+def test_run_forwards_explicit_sandbox_to_execute():
+    registry = ToolsRegistry()
+    received_sandbox = []
+
+    def capture_validator(value, sandbox: SandboxConfig):
+        received_sandbox.append(sandbox)
+        return value
+
+    @registry.register("check", validators={"v": capture_validator})
+    def check(v: str) -> str:
+        """Check."""
+        return v
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _make_tool_call_response("check", {"v": "test"}),
+        _make_text_response("done"),
+    ]
+
+    explicit_sandbox = SandboxConfig.off()
+    conv = Conversation()
+    conv.add_user("go")
+    run(conv, client, "gpt-4o", registry, tools=registry.to_openai_schema(), sandbox=explicit_sandbox)
+
+    assert received_sandbox[0] is explicit_sandbox
+
+
+def test_run_defaults_to_sandbox_default_when_none():
+    registry = ToolsRegistry()
+    received_sandbox = []
+
+    def capture_validator(value, sandbox: SandboxConfig):
+        received_sandbox.append(sandbox)
+        return value
+
+    @registry.register("check2", validators={"v": capture_validator})
+    def check2(v: str) -> str:
+        """Check2."""
+        return v
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _make_tool_call_response("check2", {"v": "test"}),
+        _make_text_response("done"),
+    ]
+
+    conv = Conversation()
+    conv.add_user("go")
+    run(conv, client, "gpt-4o", registry, tools=registry.to_openai_schema())
+
+    assert received_sandbox[0] == SandboxConfig.default()
