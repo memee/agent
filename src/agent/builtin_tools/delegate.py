@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import os
-
-import openai
-
 from agent import tools
+from agent.client import create_client
 from agent.conversation import Conversation
 from agent.profile import profile_registry, sandbox_from_profile
 from agent.run import run
@@ -59,7 +56,7 @@ def delegate(profile: str, task: str) -> str:
 
     from agent import tools as registry  # re-import to ensure all tools are registered
 
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = create_client()
     conv = Conversation(system_prompt=agent_profile.system_prompt)
     conv.add_user(task)
     scoped_tools = registry.to_openai_schema_by_names(agent_profile.tools) or None
