@@ -1,8 +1,12 @@
 import inspect
+import logging
+import time
 from typing import Any, Callable
 
 from agent.sandbox import SandboxConfig
 from agent.schema import function_to_tool_schema
+
+logger = logging.getLogger("agent")
 
 
 class ToolsRegistry:
@@ -60,7 +64,28 @@ class ToolsRegistry:
         fn = entry["fn"]
         if "sandbox" in inspect.signature(fn).parameters:
             validated_args["sandbox"] = domain_sandbox
-        return fn(**validated_args)
+
+        logger.info("tool_call_start", extra={"tool": name, "tool_args": args})
+        t0 = time.monotonic()
+        try:
+            result = fn(**validated_args)
+        except Exception as exc:
+            duration_ms = round((time.monotonic() - t0) * 1000, 1)
+            logger.error(
+                "tool_call_error",
+                extra={"tool": name, "duration_ms": duration_ms, "error": str(exc)},
+            )
+            raise
+        duration_ms = round((time.monotonic() - t0) * 1000, 1)
+        logger.info(
+            "tool_call_end",
+            extra={
+                "tool": name,
+                "duration_ms": duration_ms,
+                "result_preview": str(result)[:200],
+            },
+        )
+        return result
 
     def names(self, group: str | None = None) -> list[str]:
         """Return list of tool names — all or filtered by group."""

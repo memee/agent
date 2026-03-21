@@ -60,7 +60,7 @@ def delegate(profile: str, task: str) -> str:
     conv = Conversation(system_prompt=agent_profile.system_prompt)
     conv.add_user(task)
     scoped_tools = registry.to_openai_schema_by_names(agent_profile.tools) or None
-    return run(conv, client, agent_profile.model, registry, tools=scoped_tools, sandbox=sandbox)
+    return run(conv, client, agent_profile.model, registry, tools=scoped_tools, sandbox=sandbox, agent_name=profile)
 
 
 # Register the delegate tool manually with a dynamic schema
