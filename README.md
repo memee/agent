@@ -20,6 +20,50 @@ run(messages, client, model, registry, sandbox)
 - `profile.py` — subagent profiles loaded from `subagents/*.md`
 - `client.py` — OpenAI-compatible client factory (`AI_PROVIDER`, `AI_PROVIDER_API_KEY`)
 
+## Usage
+
+### Basic agent
+
+```python
+from agent import Conversation, run, tools
+from agent.client import create_client
+
+conv = Conversation("You are a helpful assistant.")
+conv.add_user("What is the capital of France?")
+
+result = run(conv, create_client(), "gpt-4o", tools)
+print(result)
+```
+
+### Agent with subagent awareness in system prompt
+
+```python
+from agent import Conversation, run, tools
+from agent.client import create_client
+from agent.profile import build_system_prompt, profile_registry
+
+system_prompt = build_system_prompt("You are an orchestrator.", profile_registry)
+conv = Conversation(system_prompt)
+conv.add_user("Research the latest news about AI and summarize.")
+
+result = run(conv, create_client(), "gpt-4o", tools)
+```
+
+`build_system_prompt` appends an `## Available Sub-agents` section so the LLM
+knows which profiles it can delegate to via the `delegate` tool.
+
+### Custom sandbox
+
+```python
+from agent.sandbox import SandboxConfig, HttpSandbox, FileSandbox
+
+sandbox = SandboxConfig(
+    http=HttpSandbox(block_private_ips=True, allowed_hosts=["api.example.com"]),
+    filesystem=FileSandbox.strict("./workspace"),
+)
+result = run(conv, create_client(), "gpt-4o", tools, sandbox=sandbox)
+```
+
 ## Builtin Tools
 
 | Tool | Domain | Description |
