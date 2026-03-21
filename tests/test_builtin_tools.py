@@ -192,3 +192,393 @@ def test_http_get_timeout():
 
         with pytest.raises(TimeoutError):
             tools.execute("http_get", {"url": "https://slow.example.com"}, sandbox=sandbox)
+
+
+# ---------------------------------------------------------------------------
+# http_post
+# ---------------------------------------------------------------------------
+
+def test_http_post_registered():
+    assert "http_post" in tools.names("builtin")
+
+
+def test_http_post_happy_path():
+    import httpx
+
+    mock_response = MagicMock()
+    mock_response.text = '{"status": "ok"}'
+    mock_response.content = b'{"status": "ok"}'
+
+    sandbox = SandboxConfig(http=HttpSandbox(block_private_ips=False))
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = tools.execute(
+            "http_post",
+            {"url": "https://example.com/api", "body": '{"key": "value"}'},
+            sandbox=sandbox,
+        )
+
+    assert result == '{"status": "ok"}'
+    mock_client.post.assert_called_once_with("https://example.com/api", json={"key": "value"})
+
+
+def test_http_post_invalid_json_raises_before_request():
+    sandbox = SandboxConfig(http=HttpSandbox(block_private_ips=False))
+    with patch("httpx.Client") as mock_client_cls:
+        with pytest.raises(ValueError, match="not valid JSON"):
+            tools.execute(
+                "http_post",
+                {"url": "https://example.com/api", "body": "not json"},
+                sandbox=sandbox,
+            )
+        mock_client_cls.assert_not_called()
+
+
+def test_http_post_private_ip_blocked():
+    sandbox = SandboxConfig(http=HttpSandbox(block_private_ips=True))
+    with pytest.raises(PermissionError):
+        tools.execute(
+            "http_post",
+            {"url": "http://192.168.1.100/api", "body": "{}"},
+            sandbox=sandbox,
+        )
+
+
+def test_http_post_size_limit_rejected():
+    import httpx
+
+    big_content = b"x" * 1000
+    mock_response = MagicMock()
+    mock_response.text = "x" * 1000
+    mock_response.content = big_content
+
+    sandbox = SandboxConfig(http=HttpSandbox(block_private_ips=False, max_response_bytes=500))
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(ValueError, match="500"):
+            tools.execute(
+                "http_post",
+                {"url": "https://example.com/api", "body": "{}"},
+                sandbox=sandbox,
+            )
+
+
+def test_http_post_timeout():
+    import httpx
+
+    sandbox = SandboxConfig(http=HttpSandbox(block_private_ips=False))
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.side_effect = httpx.TimeoutException("timeout")
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(TimeoutError):
+            tools.execute(
+                "http_post",
+                {"url": "https://slow.example.com/api", "body": "{}"},
+                sandbox=sandbox,
+            )
+
+
+# ---------------------------------------------------------------------------
+# http_download
+# ---------------------------------------------------------------------------
+
+def test_http_download_registered():
+    assert "http_download" in tools.names("builtin")
+
+
+def test_http_download_saves_file(tmp_path):
+    dest = tmp_path / "image.png"
+    file_content = b"\x89PNG\r\n\x1a\n"  # PNG magic bytes
+
+    mock_response = MagicMock()
+    mock_response.content = file_content
+
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=False),
+        filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]),
+    )
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        result = tools.execute(
+            "http_download",
+            {"url": "https://example.com/image.png", "path": str(dest)},
+            sandbox=sandbox,
+        )
+
+    assert dest.read_bytes() == file_content
+    assert result == str(dest)
+
+
+def test_http_download_creates_parent_dirs(tmp_path):
+    dest = tmp_path / "subdir" / "nested" / "image.png"
+    mock_response = MagicMock()
+    mock_response.content = b"data"
+
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=False),
+        filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]),
+    )
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        tools.execute(
+            "http_download",
+            {"url": "https://example.com/image.png", "path": str(dest)},
+            sandbox=sandbox,
+        )
+
+    assert dest.exists()
+
+
+def test_http_download_overwrites_existing_file(tmp_path):
+    dest = tmp_path / "image.png"
+    dest.write_bytes(b"old content")
+
+    mock_response = MagicMock()
+    mock_response.content = b"new content"
+
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=False),
+        filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]),
+    )
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        tools.execute(
+            "http_download",
+            {"url": "https://example.com/image.png", "path": str(dest)},
+            sandbox=sandbox,
+        )
+
+    assert dest.read_bytes() == b"new content"
+
+
+def test_http_download_private_ip_blocked(tmp_path):
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=True),
+        filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]),
+    )
+    with pytest.raises(PermissionError):
+        tools.execute(
+            "http_download",
+            {"url": "http://192.168.1.100/image.png", "path": str(tmp_path / "img.png")},
+            sandbox=sandbox,
+        )
+
+
+def test_http_download_path_outside_base_dir_blocked(tmp_path):
+    import tempfile
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=False),
+        filesystem=FileSandbox(base_dir=tmp_path / "allowed", blocked_paths=[]),
+    )
+    with pytest.raises(PermissionError):
+        tools.execute(
+            "http_download",
+            {"url": "https://example.com/img.png", "path": str(other_dir / "img.png")},
+            sandbox=sandbox,
+        )
+
+
+def test_http_download_timeout(tmp_path):
+    import httpx
+
+    sandbox = SandboxConfig(
+        http=HttpSandbox(block_private_ips=False),
+        filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]),
+    )
+    with patch("httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.side_effect = httpx.TimeoutException("timeout")
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(TimeoutError):
+            tools.execute(
+                "http_download",
+                {"url": "https://slow.example.com/img.png", "path": str(tmp_path / "img.png")},
+                sandbox=sandbox,
+            )
+
+
+# ---------------------------------------------------------------------------
+# write_file
+# ---------------------------------------------------------------------------
+
+def test_write_file_registered():
+    assert "write_file" in tools.names("builtin")
+
+
+def test_write_file_creates_file_with_correct_content(tmp_path):
+    dest = tmp_path / "output.txt"
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]))
+
+    result = tools.execute(
+        "write_file",
+        {"path": str(dest), "content": "hello world"},
+        sandbox=sandbox,
+    )
+
+    assert dest.read_text(encoding="utf-8") == "hello world"
+    assert result == str(dest)
+
+
+def test_write_file_overwrites_existing_file(tmp_path):
+    dest = tmp_path / "output.txt"
+    dest.write_text("old content")
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]))
+
+    tools.execute(
+        "write_file",
+        {"path": str(dest), "content": "new content"},
+        sandbox=sandbox,
+    )
+
+    assert dest.read_text(encoding="utf-8") == "new content"
+
+
+def test_write_file_creates_parent_dirs(tmp_path):
+    dest = tmp_path / "subdir" / "nested" / "output.txt"
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[]))
+
+    tools.execute(
+        "write_file",
+        {"path": str(dest), "content": "data"},
+        sandbox=sandbox,
+    )
+
+    assert dest.exists()
+
+
+def test_write_file_size_limit_rejected(tmp_path):
+    dest = tmp_path / "big.txt"
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[], max_file_bytes=10))
+
+    with pytest.raises(ValueError, match="10"):
+        tools.execute(
+            "write_file",
+            {"path": str(dest), "content": "x" * 100},
+            sandbox=sandbox,
+        )
+
+    assert not dest.exists()
+
+
+def test_write_file_blocked_path_raises(tmp_path):
+    env_file = tmp_path / ".env"
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path, blocked_paths=[".env"]))
+
+    with pytest.raises(PermissionError):
+        tools.execute(
+            "write_file",
+            {"path": str(env_file), "content": "SECRET=abc"},
+            sandbox=sandbox,
+        )
+
+
+def test_write_file_path_outside_base_dir_blocked(tmp_path):
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+
+    sandbox = SandboxConfig(filesystem=FileSandbox(base_dir=tmp_path / "allowed", blocked_paths=[]))
+
+    with pytest.raises(PermissionError):
+        tools.execute(
+            "write_file",
+            {"path": str(other_dir / "output.txt"), "content": "data"},
+            sandbox=sandbox,
+        )
+
+
+# ---------------------------------------------------------------------------
+# delegate image_url
+# ---------------------------------------------------------------------------
+
+def test_delegate_no_image_url_produces_plain_message(monkeypatch):
+    from agent.builtin_tools import delegate as delegate_module
+
+    captured = {}
+
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+        captured["messages"] = conv.messages
+        return "done"
+
+    monkeypatch.setattr(delegate_module, "run", fake_run)
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+
+    tools.execute("delegate", {"profile": "researcher", "task": "Do research."})
+
+    user_msg = next(m for m in captured["messages"] if m["role"] == "user")
+    assert user_msg["content"] == "Do research."
+
+
+def test_delegate_with_image_url_produces_multimodal_message(monkeypatch):
+    from agent.builtin_tools import delegate as delegate_module
+
+    captured = {}
+
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+        captured["messages"] = conv.messages
+        return "done"
+
+    monkeypatch.setattr(delegate_module, "run", fake_run)
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+
+    tools.execute("delegate", {
+        "profile": "researcher",
+        "task": "Analyze the image.",
+        "image_url": "https://example.com/photo.png",
+    })
+
+    user_msg = next(m for m in captured["messages"] if m["role"] == "user")
+    assert isinstance(user_msg["content"], list)
+    assert user_msg["content"][0] == {"type": "text", "text": "Analyze the image."}
+    assert user_msg["content"][1] == {"type": "image_url", "image_url": {"url": "https://example.com/photo.png"}}
+
+
+def test_delegate_private_ip_in_image_url_raises_before_subagent(monkeypatch):
+    from agent.builtin_tools import delegate as delegate_module
+
+    fake_run = MagicMock()
+    monkeypatch.setattr(delegate_module, "run", fake_run)
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+
+    with pytest.raises(PermissionError):
+        tools.execute("delegate", {
+            "profile": "researcher",
+            "task": "Analyze.",
+            "image_url": "http://192.168.1.100/image.png",
+        })
+
+    fake_run.assert_not_called()

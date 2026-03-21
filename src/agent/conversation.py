@@ -20,6 +20,20 @@ class Conversation:
     def add_user(self, content: str) -> None:
         self._messages.append({"role": "user", "content": content})
 
+    def add_user_with_image(self, text: str, image_url: str) -> None:
+        """Append a multimodal user message with text and an image URL.
+
+        Produces an OpenAI vision-compatible content list:
+        [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_url}}]
+        """
+        self._messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ],
+        })
+
     def add_assistant(self, message: dict) -> None:
         """Append a raw assistant message dict (may include tool_calls)."""
         self._messages.append(message)
