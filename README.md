@@ -67,6 +67,13 @@ AI_PROVIDER_API_KEY=sk-...  # falls back to OPENAI_API_KEY
 uv run pytest
 ```
 
+## Design Notes
+
+- [ ] **Revisit registry pattern** — consider refactoring based on
+  [Stop Writing Giant if-else Chains: Master the Python Registry Pattern](https://dev.to/dentedlogic/stop-writing-giant-if-else-chains-master-the-python-registry-pattern-ldm).
+  Current `registry.py` may benefit from techniques described there (decorators, registry classes,
+  lazy loading) to simplify tool registration and improve extensibility.
+
 ## TODOs
 
 - [ ] **Per-validator sandbox routing** — `registry.execute()` routes a single sandbox object
