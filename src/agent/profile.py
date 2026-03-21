@@ -158,3 +158,30 @@ class AgentProfileRegistry:
 
 # Module-level singleton
 profile_registry = AgentProfileRegistry()
+
+
+def format_subagents_section(registry: AgentProfileRegistry) -> str:
+    """Return a Markdown section listing available sub-agents from the registry.
+
+    Profiles are listed alphabetically as '- **name**: description'.
+    If the registry is empty, a note is included instead of a list.
+    """
+    profiles = registry.all()
+    lines = ["## Available Sub-agents", ""]
+    if profiles:
+        for p in profiles:
+            lines.append(f"- **{p.name}**: {p.description}")
+    else:
+        lines.append("_No sub-agents available._")
+    return "\n".join(lines)
+
+
+def build_system_prompt(base_prompt: str, registry: AgentProfileRegistry) -> str:
+    """Append the sub-agents section to a base system prompt string.
+
+    Returns '<base_prompt>\\n\\n<format_subagents_section(registry)>'.
+    """
+    section = format_subagents_section(registry)
+    if base_prompt:
+        return f"{base_prompt}\n\n{section}"
+    return section

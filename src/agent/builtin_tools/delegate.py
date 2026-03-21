@@ -12,26 +12,19 @@ def _build_delegate_schema() -> dict:
     """Build the delegate tool schema dynamically from loaded profiles."""
     profiles = profile_registry.all()
     profile_names = [p.name for p in profiles]
-    descriptions = "\n".join(f"- {p.name}: {p.description}" for p in profiles)
 
     return {
         "type": "function",
         "function": {
             "name": "delegate",
-            "description": (
-                "Run a sub-agent using a named profile.\n\n"
-                "Available profiles:\n" + descriptions
-            ),
+            "description": "Run a sub-agent using a named profile.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "profile": {
                         "type": "string",
                         "enum": profile_names,
-                        "description": (
-                            "Name of the sub-agent profile to use. "
-                            "Available profiles:\n" + descriptions
-                        ),
+                        "description": "Name of the sub-agent profile to use.",
                     },
                     "task": {
                         "type": "string",

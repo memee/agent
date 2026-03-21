@@ -7,6 +7,8 @@ from agent.profile import (
     AgentProfile,
     AgentProfileRegistry,
     _parse_profile_file,
+    build_system_prompt,
+    format_subagents_section,
     sandbox_from_profile,
 )
 from agent.sandbox import FileSandbox, HttpSandbox, SandboxConfig
@@ -145,3 +147,77 @@ def test_researcher_profile_has_model():
     registry.load_all()
     profile = registry.get("researcher")
     assert profile.model  # non-empty string
+
+
+# ---------------------------------------------------------------------------
+# format_subagents_section
+# ---------------------------------------------------------------------------
+
+def _make_registry(*profiles: AgentProfile) -> AgentProfileRegistry:
+    """Build a registry pre-loaded with the given profiles (no disk I/O)."""
+    registry = AgentProfileRegistry()
+    registry._profiles = {p.name: p for p in profiles}
+    registry._loaded = True
+    return registry
+
+
+def _make_profile(name: str, description: str = "desc") -> AgentProfile:
+    return AgentProfile(
+        name=name,
+        description=description,
+        model="gpt-4o-mini",
+        tools=[],
+        system_prompt="",
+        sandbox_config={},
+    )
+
+
+def test_format_subagents_section_heading():
+    """Section always starts with '## Available Sub-agents'."""
+    registry = _make_registry(_make_profile("alpha"))
+    result = format_subagents_section(registry)
+    assert result.startswith("## Available Sub-agents")
+
+
+def test_format_subagents_section_contains_name_and_description():
+    """Each profile appears as '- **name**: description'."""
+    registry = _make_registry(_make_profile("alpha", "does alpha things"))
+    result = format_subagents_section(registry)
+    assert "- **alpha**: does alpha things" in result
+
+
+def test_format_subagents_section_alphabetical_order():
+    """Profiles are listed in alphabetical order by name."""
+    registry = _make_registry(_make_profile("zap"), _make_profile("alpha"))
+    result = format_subagents_section(registry)
+    assert result.index("alpha") < result.index("zap")
+
+
+def test_format_subagents_section_empty_registry():
+    """Empty registry produces heading and an empty-note line."""
+    registry = _make_registry()
+    result = format_subagents_section(registry)
+    assert "## Available Sub-agents" in result
+    assert "No sub-agents available" in result
+    assert "- **" not in result
+
+
+# ---------------------------------------------------------------------------
+# build_system_prompt
+# ---------------------------------------------------------------------------
+
+def test_build_system_prompt_appends_section():
+    """build_system_prompt appends the sub-agents section after the base prompt."""
+    registry = _make_registry(_make_profile("researcher", "searches the web"))
+    result = build_system_prompt("You are a helpful assistant.", registry)
+    assert result.startswith("You are a helpful assistant.")
+    assert "## Available Sub-agents" in result
+    assert "- **researcher**: searches the web" in result
+
+
+def test_build_system_prompt_empty_base():
+    """Empty base prompt returns only the sub-agents section."""
+    registry = _make_registry(_make_profile("researcher"))
+    result = build_system_prompt("", registry)
+    assert "## Available Sub-agents" in result
+    assert not result.startswith("\n\n")

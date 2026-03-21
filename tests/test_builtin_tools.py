@@ -582,3 +582,19 @@ def test_delegate_private_ip_in_image_url_raises_before_subagent(monkeypatch):
         })
 
     fake_run.assert_not_called()
+
+
+def test_delegate_schema_descriptions_do_not_list_subagent_details():
+    """delegate tool and profile parameter descriptions must not enumerate sub-agent names/descriptions."""
+    from agent.profile import profile_registry
+
+    schemas = tools.to_openai_schema("builtin")
+    delegate_schema = next(s for s in schemas if s["function"]["name"] == "delegate")
+    fn = delegate_schema["function"]
+    profile_desc = fn["parameters"]["properties"]["profile"].get("description", "")
+    tool_desc = fn.get("description", "")
+
+    # No profile name should appear as a bullet-style listing
+    for profile in profile_registry.all():
+        assert f"- {profile.name}:" not in tool_desc
+        assert f"- {profile.name}:" not in profile_desc
