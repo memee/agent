@@ -21,13 +21,13 @@ def test_delegate_uses_profile_tools(monkeypatch):
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10):
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["tools"] = tools
         captured["model"] = model
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "openai", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
 
     tools.execute("delegate", {
         "profile": "researcher",
@@ -48,12 +48,12 @@ def test_delegate_uses_profile_model(monkeypatch):
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10):
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["model"] = model
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "openai", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
 
     tools.execute("delegate", {"profile": "researcher", "task": "some task"})
     assert captured["model"] == "gpt-4o-mini"
