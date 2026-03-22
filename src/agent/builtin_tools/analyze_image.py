@@ -1,16 +1,17 @@
 import base64
 import mimetypes
 import os
+from pathlib import Path
 
 from agent.client import create_client
-from agent.sandbox import SandboxConfig
+from agent.sandbox import FileSandbox
 from agent.tool import tool
 from agent.validators import file_path_validator
 
 
 @tool("analyze_image", group="builtin", validators={"image_path": file_path_validator}, domain="filesystem")
 def analyze_image(
-    image_path: str, prompt: str, sandbox: SandboxConfig = SandboxConfig.default()
+    image_path: str, prompt: str, sandbox: FileSandbox = FileSandbox.default()
 ) -> str:
     """Analyze a local image file using a vision-capable LLM.
 
@@ -21,11 +22,11 @@ def analyze_image(
     Returns the model's textual response.
     Raises PermissionError if image_path fails filesystem sandbox validation.
     """
-    resolved = file_path_validator(image_path, sandbox.filesystem)
-    image_bytes = resolved.read_bytes()
+    # image_path is already resolved to an absolute Path by the registry validator
+    image_bytes = Path(image_path).read_bytes()
     encoded = base64.b64encode(image_bytes).decode("ascii")
 
-    mime_type, _ = mimetypes.guess_type(str(resolved))
+    mime_type, _ = mimetypes.guess_type(str(image_path))
     if not mime_type:
         mime_type = "image/jpeg"
 
