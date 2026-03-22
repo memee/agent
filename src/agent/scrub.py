@@ -23,7 +23,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Matches: preceded by ", ?, &; field name; separator (=, :, whitespace); value >=4 chars
     (
         re.compile(
-            r'(["\?&](?:api[_\-]?key|token|password|secret)[":\s=]+)\S{4,}',
+            r'(["\?&](?:api[_\-]?key|token|password|secret)[":\s=]+)[^\s"\'`,}\]&]{4,}',
             re.IGNORECASE,
         ),
         r"\1***",
