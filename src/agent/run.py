@@ -85,7 +85,9 @@ def _run_in_context(
         messages.add_assistant(assistant_message.model_dump(exclude_unset=False))
 
         if not assistant_message.tool_calls:
-            return assistant_message.content or ""
+            final = assistant_message.content or ""
+            logger.info("agent_final_response", extra={"content": final})
+            return final
 
         # Execute each tool call and append results
         for tool_call in assistant_message.tool_calls:
