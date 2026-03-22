@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Searches the web and reads documents to answer factual questions
+description: Searches the web and reads text documents to answer factual questions. Cannot analyze images or visual content.
 model: gpt-4o-mini
 tools:
   - http_get
