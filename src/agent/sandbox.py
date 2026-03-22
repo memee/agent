@@ -11,11 +11,11 @@ class FileSandbox:
     max_file_bytes: int = 1_000_000
 
     @classmethod
-    def default(cls) -> "FileSandbox":
+    def default(cls) -> FileSandbox:
         return cls()
 
     @classmethod
-    def strict(cls, base_dir: Path) -> "FileSandbox":
+    def strict(cls, base_dir: Path) -> FileSandbox:
         return cls(
             base_dir=base_dir,
             blocked_paths=[".env", ".git", "*.key", "*.pem"],
@@ -23,7 +23,7 @@ class FileSandbox:
         )
 
     @classmethod
-    def off(cls) -> "FileSandbox":
+    def off(cls) -> FileSandbox:
         return cls(
             base_dir=None,
             blocked_paths=[],
@@ -39,11 +39,11 @@ class HttpSandbox:
     max_response_bytes: int = 500_000
 
     @classmethod
-    def default(cls) -> "HttpSandbox":
+    def default(cls) -> HttpSandbox:
         return cls()
 
     @classmethod
-    def strict(cls) -> "HttpSandbox":
+    def strict(cls) -> HttpSandbox:
         return cls(
             block_private_ips=True,
             allowed_hosts=None,
@@ -52,7 +52,7 @@ class HttpSandbox:
         )
 
     @classmethod
-    def off(cls) -> "HttpSandbox":
+    def off(cls) -> HttpSandbox:
         return cls(
             block_private_ips=False,
             allowed_hosts=None,
@@ -67,18 +67,18 @@ class SandboxConfig:
     http: HttpSandbox = field(default_factory=HttpSandbox)
 
     @classmethod
-    def default(cls) -> "SandboxConfig":
+    def default(cls) -> SandboxConfig:
         return cls()
 
     @classmethod
-    def strict(cls, file_base_dir: Path) -> "SandboxConfig":
+    def strict(cls, file_base_dir: Path) -> SandboxConfig:
         return cls(
             filesystem=FileSandbox.strict(file_base_dir),
             http=HttpSandbox.strict(),
         )
 
     @classmethod
-    def off(cls) -> "SandboxConfig":
+    def off(cls) -> SandboxConfig:
         return cls(
             filesystem=FileSandbox.off(),
             http=HttpSandbox.off(),
