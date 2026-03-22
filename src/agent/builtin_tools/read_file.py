@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from agent import tools
 from agent.sandbox import FileSandbox
+from agent.tool import tool
 from agent.validators import file_path_validator
 
 
-@tools.register("read_file", "builtin", validators={"path": file_path_validator}, domain="filesystem")
+@tool("read_file", group="builtin", validators={"path": file_path_validator}, domain="filesystem")
 def read_file(path: str, sandbox: FileSandbox = FileSandbox.default()) -> str:
     """Read a file from disk and return its text content.
 

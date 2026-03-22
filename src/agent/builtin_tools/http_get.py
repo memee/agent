@@ -1,11 +1,11 @@
 import httpx
 
-from agent import tools
 from agent.sandbox import HttpSandbox
+from agent.tool import tool
 from agent.validators import http_url_validator
 
 
-@tools.register("http_get", "builtin", validators={"url": http_url_validator}, domain="http")
+@tool("http_get", group="builtin", validators={"url": http_url_validator}, domain="http")
 def http_get(url: str, sandbox: HttpSandbox = HttpSandbox.default()) -> str:
     """Perform an HTTP GET request and return the response body as text.
 

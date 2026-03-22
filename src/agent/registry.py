@@ -1,6 +1,9 @@
+import importlib
 import inspect
 import logging
+import pkgutil
 import time
+import types
 from typing import Any, Callable
 
 from agent.sandbox import SandboxConfig
@@ -98,3 +101,37 @@ class ToolsRegistry:
     def groups(self) -> list[str]:
         """Return list of all registered group names."""
         return list({entry["group"] for entry in self._tools.values() if entry["group"] is not None})
+
+    def include(self, module_or_package: "types.ModuleType | str") -> None:
+        """Register all @tool-annotated functions from a module or package.
+
+        Accepts a module object or a dotted string name. If the target is a
+        package (has __path__), all submodules are imported and scanned
+        recursively. Functions without a _tool_meta attribute are silently
+        skipped.
+        """
+        if isinstance(module_or_package, str):
+            module_or_package = importlib.import_module(module_or_package)
+
+        self._collect_from_module(module_or_package)
+
+        if hasattr(module_or_package, "__path__"):
+            for finder, name, _is_pkg in pkgutil.walk_packages(
+                module_or_package.__path__,
+                prefix=module_or_package.__name__ + ".",
+            ):
+                submodule = importlib.import_module(name)
+                self._collect_from_module(submodule)
+
+    def _collect_from_module(self, module: "types.ModuleType") -> None:
+        """Register all @tool-annotated callables found in module's namespace."""
+        for obj in vars(module).values():
+            if callable(obj) and hasattr(obj, "_tool_meta"):
+                meta = obj._tool_meta
+                self._tools[meta["name"]] = {
+                    "fn": obj,
+                    "group": meta["group"],
+                    "domain": meta["domain"],
+                    "schema": function_to_tool_schema(meta["name"], obj),
+                    "validators": meta["validators"],
+                }

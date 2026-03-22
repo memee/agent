@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from agent import tools
 from agent.client import create_client
 from agent.conversation import Conversation
 from agent.profile import profile_registry, sandbox_from_profile
@@ -63,7 +62,7 @@ def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     if image_url is not None:
         http_url_validator(image_url, sandbox.http)
 
-    from agent import tools as registry  # re-import to ensure all tools are registered
+    from agent import tools as registry
 
     client = create_client()
     conv = Conversation(system_prompt=agent_profile.system_prompt)
@@ -75,11 +74,16 @@ def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     return run(conv, client, agent_profile.model, registry, tools=scoped_tools, sandbox=sandbox, agent_name=profile)
 
 
-# Register the delegate tool manually with a dynamic schema
-tools._tools["delegate"] = {
-    "fn": delegate,
-    "group": "builtin",
-    "domain": None,
-    "schema": _build_delegate_schema(),
-    "validators": {},
-}
+# Register the delegate tool manually with a dynamic schema.
+# Cannot use @tool() because the schema is built dynamically from loaded profiles.
+def _register_delegate() -> None:
+    from agent import tools
+    tools._tools["delegate"] = {
+        "fn": delegate,
+        "group": "builtin",
+        "domain": None,
+        "schema": _build_delegate_schema(),
+        "validators": {},
+    }
+
+_register_delegate()

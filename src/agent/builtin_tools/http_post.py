@@ -2,12 +2,12 @@ import json
 
 import httpx
 
-from agent import tools
 from agent.sandbox import HttpSandbox
+from agent.tool import tool
 from agent.validators import http_url_validator
 
 
-@tools.register("http_post", "builtin", validators={"url": http_url_validator}, domain="http")
+@tool("http_post", group="builtin", validators={"url": http_url_validator}, domain="http")
 def http_post(url: str, body: str, sandbox: HttpSandbox = HttpSandbox.default()) -> str:
     """Send an HTTP POST request with a JSON body and return the response body as text.
 

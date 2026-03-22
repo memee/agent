@@ -2,12 +2,12 @@ from pathlib import Path
 
 import httpx
 
-from agent import tools
 from agent.sandbox import SandboxConfig
+from agent.tool import tool
 from agent.validators import file_path_validator, http_url_validator
 
 
-@tools.register("http_download", "builtin", domain=None)
+@tool("http_download", group="builtin", domain=None)
 def http_download(
     url: str, path: str, sandbox: SandboxConfig = SandboxConfig.default()
 ) -> str:

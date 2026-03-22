@@ -1,7 +1,7 @@
-from agent import tools
+from agent.tool import tool
 
 
-@tools.register("hello_world", "builtin")
+@tool("hello_world", group="builtin")
 def hello_world(name: str = "World") -> str:
     """Return a friendly greeting. Useful for verifying the agent is working."""
     return f"Hello, {name}!"

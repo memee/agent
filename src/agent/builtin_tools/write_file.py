@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from agent import tools
 from agent.sandbox import FileSandbox
+from agent.tool import tool
 from agent.validators import file_path_validator
 
 
-@tools.register("write_file", "builtin", validators={"path": file_path_validator}, domain="filesystem")
+@tool("write_file", group="builtin", validators={"path": file_path_validator}, domain="filesystem")
 def write_file(path: str, content: str, sandbox: FileSandbox = FileSandbox.default()) -> str:
     """Write UTF-8 text content to a file on disk and return the resolved path.
 
