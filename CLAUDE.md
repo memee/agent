@@ -112,6 +112,7 @@ from `run.py` and `registry.py` include these via a custom `LoggingFilter`.
 AI_PROVIDER=openai          # or: openrouter
 AI_PROVIDER_API_KEY=sk-...  # falls back to OPENAI_API_KEY
 VISION_MODEL=gpt-4o         # model used by analyze_image (default: gpt-4o)
+AGENT_SCRUB_SECRETS=val1,val2  # comma-separated literal secrets to mask in logs as ***
 ```
 
 ## openspec/

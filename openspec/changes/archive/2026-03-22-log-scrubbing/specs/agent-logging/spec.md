@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: Dual-handler logging configuration
 
@@ -36,17 +36,3 @@ The log file path SHALL default to `agent.log` in the current working directory 
 
 - **WHEN** a log record containing a secret is emitted
 - **THEN** the JSON log file contains `***` instead of the original secret value
-
-### Requirement: Context fields injected into every log record
-
-The system SHALL inject the current execution context fields (run_id, parent_run_id, depth, agent_name, iteration) into every log record emitted by the `agent` logger, regardless of where in the codebase the log is produced.
-
-#### Scenario: Log record contains context fields
-
-- **WHEN** any `logger.info(...)` call is made within a `run()` execution
-- **THEN** the resulting log record contains run_id, depth, agent_name, and iteration from the current context
-
-#### Scenario: Missing context does not crash
-
-- **WHEN** a log is emitted outside of a `run()` context (e.g., at import time)
-- **THEN** context fields default to safe values (run_id=None, depth=0, agent_name="unknown", iteration=0)

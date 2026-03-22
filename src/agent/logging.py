@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timezone
 
 import agent.context as _ctx
+from agent.scrub import ScrubFilter
 
 # Standard LogRecord attributes to exclude from the key=value section of human output
 _RECORD_ATTRS = frozenset({
@@ -22,7 +23,8 @@ _RECORD_ATTRS = frozenset({
     "processName", "process", "message", "taskName", "asctime",
 })
 # Context fields shown in the prefix — not repeated as key=value
-_CONTEXT_ATTRS = frozenset({"run_id", "parent_run_id", "depth", "agent_name", "iteration"})
+_CONTEXT_ATTRS = frozenset(
+    {"run_id", "parent_run_id", "depth", "agent_name", "iteration"})
 
 
 class JsonFormatter(logging.Formatter):
@@ -34,7 +36,8 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         data: dict = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(record.created,
+                                                tz=timezone.utc).isoformat(),
             "level": record.levelname,
             "event": record.getMessage(),
         }
@@ -44,7 +47,8 @@ class JsonFormatter(logging.Formatter):
                 data[field] = getattr(record, field)
         # Event-specific extra fields
         for key, value in record.__dict__.items():
-            if key not in _RECORD_ATTRS and key not in _CONTEXT_ATTRS and not key.startswith("_"):
+            if key not in _RECORD_ATTRS and key not in _CONTEXT_ATTRS and not key.startswith(
+                    "_"):
                 data[key] = value
         return json.dumps(data, default=str)
 
@@ -56,7 +60,8 @@ class HumanFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%H:%M:%S")
+        ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
+            "%H:%M:%S")
         name = getattr(record, "agent_name", "unknown")
         dep = getattr(record, "depth", 0)
         msg = record.getMessage()
@@ -65,7 +70,9 @@ class HumanFormatter(logging.Formatter):
         extras = {
             k: v
             for k, v in record.__dict__.items()
-            if k not in _RECORD_ATTRS and k not in _CONTEXT_ATTRS and not k.startswith("_")
+            if
+            k not in _RECORD_ATTRS and k not in _CONTEXT_ATTRS and not k.startswith(
+                "_")
         }
         prefix = f"[{ts}] {record.levelname} {name}({dep}) | {msg}"
         if extras:
@@ -103,12 +110,14 @@ def configure_logging() -> None:
     agent_logger.propagate = False
 
     context_filter = ContextFilter()
+    scrub_filter = ScrubFilter()
 
     # Stdout handler — human-readable
     stdout_handler = logging.StreamHandler()
     stdout_handler.setLevel(logging.DEBUG)
     stdout_handler.setFormatter(HumanFormatter())
     stdout_handler.addFilter(context_filter)
+    stdout_handler.addFilter(scrub_filter)
     agent_logger.addHandler(stdout_handler)
 
     # File handler — structured JSON
@@ -117,4 +126,5 @@ def configure_logging() -> None:
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(JsonFormatter())
     file_handler.addFilter(context_filter)
+    file_handler.addFilter(scrub_filter)
     agent_logger.addHandler(file_handler)
