@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from agent.sandbox import SandboxConfig
 from agent.schema import function_to_tool_schema
+from agent.secrets import SecretsStore
 
 logger = logging.getLogger("agent")
 
@@ -51,7 +52,13 @@ class ToolsRegistry:
             if name in self._tools
         ]
 
-    def execute(self, name: str, args: dict, sandbox: SandboxConfig | None = None) -> Any:
+    def execute(
+        self,
+        name: str,
+        args: dict,
+        sandbox: SandboxConfig | None = None,
+        secrets: SecretsStore | None = None,
+    ) -> Any:
         """Call registered tool by name with given arguments, applying validators first."""
         if name not in self._tools:
             raise KeyError(f"Tool '{name}' is not registered")
@@ -59,7 +66,15 @@ class ToolsRegistry:
         entry = self._tools[name]
         domain = entry["domain"]
         domain_sandbox = getattr(effective_sandbox, domain) if domain is not None else effective_sandbox
-        validated_args = dict(args)
+
+        logger.info("tool_call_start", extra={"tool": name, "tool_args": args})
+
+        # Interpolate ${NAME} placeholders before validators see the values
+        validated_args = {
+            k: secrets.interpolate(v) if secrets is not None and isinstance(v, str) else v
+            for k, v in args.items()
+        }
+
         for arg_name, validator in entry["validators"].items():
             if arg_name in validated_args:
                 validated_args[arg_name] = validator(validated_args[arg_name], domain_sandbox)
@@ -68,7 +83,6 @@ class ToolsRegistry:
         if "sandbox" in inspect.signature(fn).parameters:
             validated_args["sandbox"] = domain_sandbox
 
-        logger.info("tool_call_start", extra={"tool": name, "tool_args": args})
         t0 = time.monotonic()
         try:
             result = fn(**validated_args)

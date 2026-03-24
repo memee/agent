@@ -144,3 +144,49 @@ def test_scrub_filter_always_returns_true():
     )
     f = scrub_mod.ScrubFilter()
     assert f.filter(record) is True
+
+
+# --- Runtime secrets registration ---
+
+def test_register_runtime_secret_is_masked():
+    import importlib
+    import agent.scrub as scrub_mod
+    importlib.reload(scrub_mod)
+
+    scrub_mod.register_runtime_secrets(["mysecret123"])
+    result = scrub_mod.scrub("token=mysecret123")
+    assert "mysecret123" not in result
+    assert "***" in result
+
+
+def test_register_runtime_does_not_affect_explicit(monkeypatch):
+    monkeypatch.setenv("AGENT_SCRUB_SECRETS", "explicit-val")
+    import importlib
+    import agent.scrub as scrub_mod
+    importlib.reload(scrub_mod)
+
+    scrub_mod.register_runtime_secrets(["runtime-val"])
+    assert scrub_mod.scrub("x=explicit-val") == "x=***"
+    assert scrub_mod.scrub("y=runtime-val") == "y=***"
+
+
+def test_register_runtime_longest_first():
+    import importlib
+    import agent.scrub as scrub_mod
+    importlib.reload(scrub_mod)
+
+    scrub_mod.register_runtime_secrets(["abc", "abcdef"])
+    result = scrub_mod.scrub("x=abcdef y=abc")
+    assert "abcdef" not in result
+    assert result == "x=*** y=***"
+
+
+def test_register_runtime_empty_string_ignored():
+    import importlib
+    import agent.scrub as scrub_mod
+    importlib.reload(scrub_mod)
+
+    scrub_mod.register_runtime_secrets(["", "real-secret"])
+    # empty string must not cause all text to be masked
+    assert scrub_mod.scrub("hello world") == "hello world"
+    assert "***" in scrub_mod.scrub("token=real-secret")

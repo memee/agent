@@ -10,10 +10,12 @@ if TYPE_CHECKING:
     import openai
 
 import agent.context as _ctx
+import agent.scrub as _scrub
 from agent.context import set_run_context
 from agent.conversation import Conversation
 from agent.registry import ToolsRegistry
 from agent.sandbox import SandboxConfig
+from agent.secrets import SecretsStore
 
 logger = logging.getLogger("agent")
 
@@ -27,6 +29,7 @@ def run(
     sandbox: SandboxConfig | None = None,
     max_iterations: int = 10,
     agent_name: str = "main",
+    secrets: SecretsStore | None = None,
 ) -> str:
     """Drive the tool-call cycle until a final text response or iteration limit.
 
@@ -39,7 +42,7 @@ def run(
     ctx = _cv.copy_context()
     return ctx.run(
         _run_in_context,
-        messages, client, model, registry, tools, sandbox, max_iterations, agent_name,
+        messages, client, model, registry, tools, sandbox, max_iterations, agent_name, secrets,
     )
 
 
@@ -52,9 +55,13 @@ def _run_in_context(
     sandbox: SandboxConfig | None = None,
     max_iterations: int = 10,
     agent_name: str = "main",
+    secrets: SecretsStore | None = None,
 ) -> str:
     set_run_context(agent_name)
     effective_sandbox = sandbox if sandbox is not None else SandboxConfig.default()
+
+    if secrets is not None:
+        _scrub.register_runtime_secrets(secrets.values())
 
     for i in range(max_iterations):
         _ctx.iteration.set(i + 1)
@@ -93,7 +100,7 @@ def _run_in_context(
         for tool_call in assistant_message.tool_calls:
             name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
-            result = str(registry.execute(name, args, sandbox=effective_sandbox))
+            result = str(registry.execute(name, args, sandbox=effective_sandbox, secrets=secrets))
             messages.add_tool_result(tool_call.id, result)
 
     raise RuntimeError(

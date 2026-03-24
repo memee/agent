@@ -224,7 +224,7 @@ def test_http_post_happy_path():
         )
 
     assert result == '{"status": "ok"}'
-    mock_client.post.assert_called_once_with("https://example.com/api", json={"key": "value"})
+    mock_client.post.assert_called_once_with("https://example.com/api", json={"key": "value"}, headers={})
 
 
 def test_http_post_invalid_json_raises_before_request():
@@ -598,3 +598,133 @@ def test_delegate_schema_descriptions_do_not_list_subagent_details():
     for profile in profile_registry.all():
         assert f"- {profile.name}:" not in tool_desc
         assert f"- {profile.name}:" not in profile_desc
+
+
+# ---------------------------------------------------------------------------
+# http_post headers
+# ---------------------------------------------------------------------------
+
+def test_http_post_sends_custom_header():
+    from unittest.mock import patch, MagicMock
+    from agent.builtin_tools.http_post import http_post
+    from agent.sandbox import HttpSandbox
+
+    mock_response = MagicMock()
+    mock_response.content = b'{"ok": true}'
+    mock_response.text = '{"ok": true}'
+
+    with patch("agent.builtin_tools.http_post.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        http_post(
+            url="https://example.com/api",
+            body="{}",
+            headers='{"Authorization": "Bearer tok123"}',
+            sandbox=HttpSandbox.off(),
+        )
+
+    call_kwargs = mock_client.post.call_args
+    assert call_kwargs.kwargs["headers"] == {"Authorization": "Bearer tok123"}
+
+
+def test_http_post_default_empty_headers():
+    from unittest.mock import patch, MagicMock
+    from agent.builtin_tools.http_post import http_post
+    from agent.sandbox import HttpSandbox
+
+    mock_response = MagicMock()
+    mock_response.content = b"ok"
+    mock_response.text = "ok"
+
+    with patch("agent.builtin_tools.http_post.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.post.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        http_post(url="https://example.com/api", body="{}", sandbox=HttpSandbox.off())
+
+    call_kwargs = mock_client.post.call_args
+    assert call_kwargs.kwargs["headers"] == {}
+
+
+def test_http_post_invalid_headers_raises():
+    from agent.builtin_tools.http_post import http_post
+    from agent.sandbox import HttpSandbox
+
+    with pytest.raises(ValueError, match="headers"):
+        http_post(
+            url="https://example.com",
+            body="{}",
+            headers="not-json",
+            sandbox=HttpSandbox.off(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# http_get headers
+# ---------------------------------------------------------------------------
+
+def test_http_get_sends_custom_header():
+    from unittest.mock import patch, MagicMock
+    from agent.builtin_tools.http_get import http_get
+    from agent.sandbox import HttpSandbox
+
+    mock_response = MagicMock()
+    mock_response.content = b"data"
+    mock_response.text = "data"
+
+    with patch("agent.builtin_tools.http_get.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        http_get(
+            url="https://example.com/data",
+            headers='{"X-Api-Key": "secret123"}',
+            sandbox=HttpSandbox.off(),
+        )
+
+    call_kwargs = mock_client.get.call_args
+    assert call_kwargs.kwargs["headers"] == {"X-Api-Key": "secret123"}
+
+
+def test_http_get_default_empty_headers():
+    from unittest.mock import patch, MagicMock
+    from agent.builtin_tools.http_get import http_get
+    from agent.sandbox import HttpSandbox
+
+    mock_response = MagicMock()
+    mock_response.content = b"data"
+    mock_response.text = "data"
+
+    with patch("agent.builtin_tools.http_get.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.get.return_value = mock_response
+        mock_client_cls.return_value = mock_client
+
+        http_get(url="https://example.com/data", sandbox=HttpSandbox.off())
+
+    call_kwargs = mock_client.get.call_args
+    assert call_kwargs.kwargs["headers"] == {}
+
+
+def test_http_get_invalid_headers_raises():
+    from agent.builtin_tools.http_get import http_get
+    from agent.sandbox import HttpSandbox
+
+    with pytest.raises(ValueError, match="headers"):
+        http_get(
+            url="https://example.com",
+            headers="not-json",
+            sandbox=HttpSandbox.off(),
+        )

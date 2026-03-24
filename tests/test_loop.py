@@ -5,6 +5,7 @@ from agent.conversation import Conversation
 from agent.run import run
 from agent.registry import ToolsRegistry
 from agent.sandbox import SandboxConfig
+from agent.secrets import SecretsStore
 
 
 def _make_text_response(content: str) -> MagicMock:
@@ -179,3 +180,28 @@ def test_run_defaults_to_sandbox_default_when_none():
     run(conv, client, "gpt-4o", registry, tools=registry.to_openai_schema())
 
     assert received_sandbox[0] == SandboxConfig.default()
+
+
+def test_run_with_secrets_interpolates_tool_args():
+    """run() passes SecretsStore to execute(); placeholders are resolved before tool is called."""
+    registry = ToolsRegistry()
+    received = []
+
+    @registry.register("echo")
+    def echo(url: str) -> str:
+        """Echo the url."""
+        received.append(url)
+        return url
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [
+        _make_tool_call_response("echo", {"url": "https://api.example.com?k=${API_KEY}"}),
+        _make_text_response("done"),
+    ]
+
+    secrets = SecretsStore({"API_KEY": "real-key-123"})
+    conv = Conversation()
+    conv.add_user("go")
+    run(conv, client, "gpt-4o", registry, tools=registry.to_openai_schema(), secrets=secrets)
+
+    assert received[0] == "https://api.example.com?k=real-key-123"

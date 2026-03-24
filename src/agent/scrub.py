@@ -39,6 +39,20 @@ _EXPLICIT: list[str] = sorted(
     reverse=True,
 )
 
+# --- Runtime secrets (registered dynamically via register_runtime_secrets) ---
+_RUNTIME: list[str] = []
+
+
+def register_runtime_secrets(values: list[str]) -> None:
+    """Register secret values to be masked at runtime.
+
+    Filters empty strings. Maintains longest-first ordering to prevent partial
+    masking. Safe to call multiple times; duplicates are deduplicated.
+    """
+    global _RUNTIME
+    combined = set(_RUNTIME) | {v for v in values if v}
+    _RUNTIME = sorted(combined, key=len, reverse=True)
+
 
 def scrub(text: str) -> str:
     """Return *text* with all known secrets replaced by ***.
@@ -48,6 +62,8 @@ def scrub(text: str) -> str:
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
     for secret in _EXPLICIT:
+        text = text.replace(secret, "***")
+    for secret in _RUNTIME:
         text = text.replace(secret, "***")
     return text
 

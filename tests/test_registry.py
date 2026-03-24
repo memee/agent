@@ -1,6 +1,7 @@
 import pytest
 from agent.registry import ToolsRegistry
 from agent.sandbox import FileSandbox, HttpSandbox, SandboxConfig
+from agent.secrets import SecretsStore
 from agent.validators import Validator
 
 
@@ -270,3 +271,112 @@ def test_execute_no_domain_passes_full_sandbox(registry: ToolsRegistry):
     cfg = SandboxConfig.off()
     registry.execute("no_domain", {"x": "hi"}, sandbox=cfg)
     assert received[0] is cfg
+
+
+# ---------------------------------------------------------------------------
+# SecretsStore interpolation
+# ---------------------------------------------------------------------------
+
+def test_execute_interpolates_placeholder_in_string_arg(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("capture")
+    def capture(url: str) -> str:
+        """Capture."""
+        received.append(url)
+        return url
+
+    secrets = SecretsStore({"TOKEN": "real-token"})
+    registry.execute("capture", {"url": "https://api.example.com?key=${TOKEN}"}, secrets=secrets)
+    assert received[0] == "https://api.example.com?key=real-token"
+
+
+def test_execute_interpolates_placeholder_in_body(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("capture_body")
+    def capture_body(body: str) -> str:
+        """Capture body."""
+        received.append(body)
+        return body
+
+    secrets = SecretsStore({"API_KEY": "abc123"})
+    registry.execute("capture_body", {"body": '{"apikey":"${API_KEY}"}'}, secrets=secrets)
+    assert received[0] == '{"apikey":"abc123"}'
+
+
+def test_execute_without_secrets_no_interpolation(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("passthrough")
+    def passthrough(url: str) -> str:
+        """Passthrough."""
+        received.append(url)
+        return url
+
+    registry.execute("passthrough", {"url": "https://api.example.com?key=${TOKEN}"})
+    assert received[0] == "https://api.example.com?key=${TOKEN}"
+
+
+def test_execute_non_string_arg_not_interpolated(registry: ToolsRegistry):
+    received = []
+
+    @registry.register("capture_int")
+    def capture_int(count: int) -> int:
+        """Capture int."""
+        received.append(count)
+        return count
+
+    secrets = SecretsStore({"TOKEN": "x"})
+    registry.execute("capture_int", {"count": 42}, secrets=secrets)
+    assert received[0] == 42
+
+
+def test_execute_interpolation_before_validator(registry: ToolsRegistry):
+    """Validator must see the resolved value, not the placeholder."""
+    seen_by_validator = []
+
+    def capture_validator(value, sandbox):
+        seen_by_validator.append(value)
+        return value
+
+    @registry.register("checked", validators={"url": capture_validator})
+    def checked(url: str) -> str:
+        """Checked."""
+        return url
+
+    secrets = SecretsStore({"HOST": "example.com"})
+    registry.execute("checked", {"url": "https://${HOST}/path"}, secrets=secrets)
+    assert seen_by_validator[0] == "https://example.com/path"
+
+
+def test_execute_logs_pre_interpolation_args(registry: ToolsRegistry):
+    """tool_call_start log must contain the placeholder, not the resolved value."""
+    import logging
+
+    class _Capture(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.records: list[logging.LogRecord] = []
+        def emit(self, record):
+            self.records.append(record)
+
+    @registry.register("logged_tool")
+    def logged_tool(url: str) -> str:
+        """Logged tool."""
+        return url
+
+    handler = _Capture()
+    logger = logging.getLogger("agent")
+    logger.addHandler(handler)
+    try:
+        secrets = SecretsStore({"SECRET": "real-value"})
+        registry.execute("logged_tool", {"url": "https://x.com?k=${SECRET}"}, secrets=secrets)
+    finally:
+        logger.removeHandler(handler)
+
+    start_records = [r for r in handler.records if r.getMessage() == "tool_call_start"]
+    assert start_records, "tool_call_start log entry not found"
+    tool_args = start_records[0].tool_args
+    assert "${SECRET}" in tool_args["url"]
+    assert "real-value" not in tool_args["url"]
