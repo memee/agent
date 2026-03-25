@@ -59,14 +59,14 @@ def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     agent_profile = profile_registry.get(profile)
     sandbox = sandbox_from_profile(agent_profile.sandbox_config)
 
-    if image_url is not None:
+    if image_url:
         http_url_validator(image_url, sandbox.http)
 
     from agent import tools as registry
 
     client = create_client()
     conv = Conversation(system_prompt=agent_profile.system_prompt)
-    if image_url is not None:
+    if image_url:
         conv.add_user_with_image(task, image_url)
     else:
         conv.add_user(task)

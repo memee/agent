@@ -1,4 +1,4 @@
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: analyze_image tool analyzes a local image file using a vision LLM
 
@@ -7,7 +7,7 @@ The library SHALL register a `analyze_image` tool in the `"builtin"` group with 
 It SHALL accept:
 
 - `image_path: str` — path to the local image file to analyze
-- `prompt: str` — the question or instruction for the vision model (e.g., `"Describe this image"`)
+- `prompt: str` — the question or instruction for the vision model
 - `as_ascii: bool = False` — when `True`, convert the image to ASCII art and send
   as plain text instead of a multimodal attachment
 
@@ -63,12 +63,3 @@ and use `create_client()`. It SHALL return the text content of the first choice.
 
 - **WHEN** `analyze_image` is called with a path outside `FileSandbox.base_dir`
 - **THEN** raises `PermissionError` from `file_path_validator` before any file I/O
-
-### Requirement: analyze_image is auto-registered on import
-
-`analyze_image` SHALL be registered automatically when `from agent import tools` is executed.
-
-#### Scenario: analyze_image available after import
-
-- **WHEN** `from agent import tools` is executed
-- **THEN** `"analyze_image"` appears in `tools.names("builtin")`
