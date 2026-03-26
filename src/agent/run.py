@@ -30,6 +30,7 @@ def run(
     max_iterations: int = 10,
     agent_name: str = "main",
     secrets: SecretsStore | None = None,
+    max_completion_tokens: int | None = None,
 ) -> str:
     """Drive the tool-call cycle until a final text response or iteration limit.
 
@@ -43,6 +44,7 @@ def run(
     return ctx.run(
         _run_in_context,
         messages, client, model, registry, tools, sandbox, max_iterations, agent_name, secrets,
+        max_completion_tokens,
     )
 
 
@@ -56,6 +58,7 @@ def _run_in_context(
     max_iterations: int = 10,
     agent_name: str = "main",
     secrets: SecretsStore | None = None,
+    max_completion_tokens: int | None = None,
 ) -> str:
     set_run_context(agent_name)
     effective_sandbox = sandbox if sandbox is not None else SandboxConfig.default()
@@ -69,6 +72,8 @@ def _run_in_context(
         kwargs: dict = {"model": model, "messages": messages.messages}
         if tools:
             kwargs["tools"] = tools
+        if max_completion_tokens is not None:
+            kwargs["max_completion_tokens"] = max_completion_tokens
 
         t0 = time.monotonic()
         response = client.chat.completions.create(**kwargs)
@@ -90,6 +95,10 @@ def _run_in_context(
 
         # Append raw assistant message dict to conversation
         messages.add_assistant(assistant_message.model_dump(exclude_unset=False))
+
+        # Log reasoning text that precedes tool calls (final response is logged separately)
+        if assistant_message.tool_calls and assistant_message.content:
+            logger.info("agent_reasoning", extra={"content": assistant_message.content})
 
         if not assistant_message.tool_calls:
             final = assistant_message.content or ""
