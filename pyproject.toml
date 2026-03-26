@@ -12,6 +12,7 @@ dependencies = [
     "openai>=1.0",
     "Pillow>=11.0",
     "PyYAML>=6.0",
+    "questionary>=2.0",
 ]
 
 [tool.uv]

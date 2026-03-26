@@ -13,6 +13,7 @@ import agent.context as _ctx
 import agent.scrub as _scrub
 from agent.context import set_run_context
 from agent.conversation import Conversation
+from agent.hitl import HITLHandler, _hitl_handler_var
 from agent.registry import ToolsRegistry
 from agent.sandbox import SandboxConfig
 from agent.secrets import SecretsStore
@@ -31,6 +32,7 @@ def run(
     agent_name: str = "main",
     secrets: SecretsStore | None = None,
     max_completion_tokens: int | None = None,
+    hitl_handler: HITLHandler | None = None,
 ) -> str:
     """Drive the tool-call cycle until a final text response or iteration limit.
 
@@ -44,7 +46,7 @@ def run(
     return ctx.run(
         _run_in_context,
         messages, client, model, registry, tools, sandbox, max_iterations, agent_name, secrets,
-        max_completion_tokens,
+        max_completion_tokens, hitl_handler,
     )
 
 
@@ -59,8 +61,11 @@ def _run_in_context(
     agent_name: str = "main",
     secrets: SecretsStore | None = None,
     max_completion_tokens: int | None = None,
+    hitl_handler: HITLHandler | None = None,
 ) -> str:
     set_run_context(agent_name)
+    if hitl_handler is not None:
+        _hitl_handler_var.set(hitl_handler)
     effective_sandbox = sandbox if sandbox is not None else SandboxConfig.default()
 
     if secrets is not None:
