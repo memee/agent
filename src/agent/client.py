@@ -30,4 +30,4 @@ def create_client() -> openai.OpenAI:
     api_key = os.environ.get("AI_PROVIDER_API_KEY") or os.environ.get("OPENAI_API_KEY")
     base_url = _PROVIDER_BASE_URLS[provider]
 
-    return openai.OpenAI(api_key=api_key, base_url=base_url)
+    return openai.OpenAI(api_key=api_key, base_url=base_url, timeout=120.0)
