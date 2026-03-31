@@ -44,6 +44,14 @@ def _build_delegate_schema() -> dict:
     }
 
 
+def _refresh_delegate_schema() -> None:
+    """Refresh the registered delegate schema from the current profile registry."""
+    from agent import tools
+
+    if "delegate" in tools._tools:
+        tools._tools["delegate"]["schema"] = _build_delegate_schema()
+
+
 def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     """Run a sub-agent using a named profile.
 
@@ -86,4 +94,6 @@ def _register_delegate() -> None:
         "validators": {},
     }
 
+
+profile_registry.add_change_listener(_refresh_delegate_schema)
 _register_delegate()

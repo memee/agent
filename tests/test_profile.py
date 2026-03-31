@@ -156,7 +156,8 @@ def test_researcher_profile_has_model():
 def _make_registry(*profiles: AgentProfile) -> AgentProfileRegistry:
     """Build a registry pre-loaded with the given profiles (no disk I/O)."""
     registry = AgentProfileRegistry()
-    registry._profiles = {p.name: p for p in profiles}
+    registry._discovered_profiles = {p.name: p for p in profiles}
+    registry._registered_profiles = {}
     registry._loaded = True
     return registry
 
@@ -221,3 +222,53 @@ def test_build_system_prompt_empty_base():
     result = build_system_prompt("", registry)
     assert "## Available Sub-agents" in result
     assert not result.startswith("\n\n")
+
+
+# ---------------------------------------------------------------------------
+# Programmatic registration
+# ---------------------------------------------------------------------------
+
+def test_register_profile_before_first_read():
+    """Programmatic registration works before any explicit load call."""
+    registry = AgentProfileRegistry()
+    registry.register(_make_profile("planner"))
+
+    assert registry.get("planner").name == "planner"
+    assert "planner" in registry.names()
+
+
+def test_register_profile_after_load_all():
+    """Programmatic registration is visible after built-ins have loaded."""
+    registry = AgentProfileRegistry()
+    registry.load_all()
+
+    registry.register(_make_profile("planner"))
+
+    assert "researcher" in registry.names()
+    assert "planner" in registry.names()
+
+
+def test_register_profile_merged_names_sorted():
+    """Merged profile names remain alphabetically ordered."""
+    registry = AgentProfileRegistry()
+    registry.register(_make_profile("zap"))
+    registry.register(_make_profile("alpha"))
+
+    assert registry.names() == ["alpha", "researcher", "zap"]
+
+
+def test_register_duplicate_builtin_profile_raises():
+    """Registering a built-in profile name raises ValueError."""
+    registry = AgentProfileRegistry()
+
+    with pytest.raises(ValueError, match="researcher"):
+        registry.register(_make_profile("researcher"))
+
+
+def test_register_duplicate_programmatic_profile_raises():
+    """Registering the same programmatic profile twice raises ValueError."""
+    registry = AgentProfileRegistry()
+    registry.register(_make_profile("planner"))
+
+    with pytest.raises(ValueError, match="planner"):
+        registry.register(_make_profile("planner"))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from importlib.resources import files
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -120,40 +120,78 @@ class AgentProfileRegistry:
     """Registry that loads and exposes AgentProfile objects from subagents/*.md files."""
 
     def __init__(self) -> None:
-        self._profiles: dict[str, AgentProfile] = {}
+        self._discovered_profiles: dict[str, AgentProfile] = {}
+        self._registered_profiles: dict[str, AgentProfile] = {}
+        self._listeners: list[Callable[[], None]] = []
         self._loaded = False
 
     def load_all(self) -> None:
         """Load all *.md profiles from the agent.subagents package."""
         pkg = files("agent.subagents")
-        self._profiles = {}
+        discovered_profiles: dict[str, AgentProfile] = {}
         for resource in pkg.iterdir():
             if resource.name.endswith(".md"):
                 content = resource.read_text(encoding="utf-8")
                 profile = _parse_profile_file(resource.name, content)
-                self._profiles[profile.name] = profile
+                self._check_duplicate_name(profile.name, discovered_profiles, source="autodiscovery")
+                self._check_duplicate_name(
+                    profile.name,
+                    self._registered_profiles,
+                    source="autodiscovery",
+                )
+                discovered_profiles[profile.name] = profile
+        self._discovered_profiles = discovered_profiles
         self._loaded = True
+        self._notify_changed()
 
     def _ensure_loaded(self) -> None:
         if not self._loaded:
             self.load_all()
 
+    def _check_duplicate_name(
+        self,
+        name: str,
+        profiles: dict[str, AgentProfile],
+        *,
+        source: str,
+    ) -> None:
+        if name in profiles:
+            raise ValueError(f"Duplicate profile name '{name}' encountered during {source}")
+
+    def _notify_changed(self) -> None:
+        for listener in list(self._listeners):
+            listener()
+
+    def add_change_listener(self, listener: Callable[[], None]) -> None:
+        """Register a callback invoked whenever the registry contents change."""
+        self._listeners.append(listener)
+
+    def register(self, profile: AgentProfile) -> None:
+        """Register a profile programmatically."""
+        self._ensure_loaded()
+        self._check_duplicate_name(profile.name, self._discovered_profiles, source="registration")
+        self._check_duplicate_name(profile.name, self._registered_profiles, source="registration")
+        self._registered_profiles[profile.name] = profile
+        self._notify_changed()
+
+    def _merged_profiles(self) -> dict[str, AgentProfile]:
+        self._ensure_loaded()
+        return {**self._discovered_profiles, **self._registered_profiles}
+
     def all(self) -> list[AgentProfile]:
         """Return all loaded profiles sorted alphabetically by name."""
-        self._ensure_loaded()
-        return sorted(self._profiles.values(), key=lambda p: p.name)
+        return sorted(self._merged_profiles().values(), key=lambda p: p.name)
 
     def get(self, name: str) -> AgentProfile:
         """Return a profile by name. Raises KeyError if not found."""
-        self._ensure_loaded()
-        if name not in self._profiles:
+        profiles = self._merged_profiles()
+        if name not in profiles:
             raise KeyError(name)
-        return self._profiles[name]
+        return profiles[name]
 
     def names(self) -> list[str]:
         """Return sorted list of profile names."""
-        self._ensure_loaded()
-        return sorted(self._profiles.keys())
+        return sorted(self._merged_profiles().keys())
 
 
 # Module-level singleton

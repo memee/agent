@@ -554,6 +554,7 @@ def test_delegate_with_image_url_produces_multimodal_message(monkeypatch):
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
     monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "http_url_validator", lambda url, sandbox: url)
 
     tools.execute("delegate", {
         "profile": "researcher",
@@ -598,6 +599,91 @@ def test_delegate_schema_descriptions_do_not_list_subagent_details():
     for profile in profile_registry.all():
         assert f"- {profile.name}:" not in tool_desc
         assert f"- {profile.name}:" not in profile_desc
+
+
+def test_delegate_schema_refreshes_after_programmatic_registration(monkeypatch):
+    """delegate schema enum refreshes when a profile is registered after import."""
+    from agent.profile import profile_registry, AgentProfile
+    from agent.builtin_tools import delegate as delegate_module
+
+    original_discovered = dict(profile_registry._discovered_profiles)
+    original_registered = dict(profile_registry._registered_profiles)
+    original_loaded = profile_registry._loaded
+
+    monkeypatch.setattr(profile_registry, "_discovered_profiles", dict(original_discovered))
+    monkeypatch.setattr(profile_registry, "_registered_profiles", dict(original_registered))
+    monkeypatch.setattr(profile_registry, "_loaded", original_loaded)
+
+    profile_registry.register(
+        AgentProfile(
+            name="planner",
+            description="Plans work.",
+            model="gpt-4o-mini",
+            tools=["read_file"],
+            system_prompt="Plan the work carefully.",
+            sandbox_config={},
+        )
+    )
+
+    schemas = tools.to_openai_schema("builtin")
+    delegate_schema = next(s for s in schemas if s["function"]["name"] == "delegate")
+    profile_param = delegate_schema["function"]["parameters"]["properties"]["profile"]
+
+    assert "planner" in profile_param["enum"]
+
+    monkeypatch.setattr(profile_registry, "_discovered_profiles", original_discovered)
+    monkeypatch.setattr(profile_registry, "_registered_profiles", original_registered)
+    monkeypatch.setattr(profile_registry, "_loaded", original_loaded)
+    delegate_module._refresh_delegate_schema()
+
+
+def test_delegate_executes_programmatically_registered_profile(monkeypatch):
+    """delegate can execute a profile registered after module import."""
+    from agent.profile import profile_registry, AgentProfile
+    from agent.builtin_tools import delegate as delegate_module
+
+    original_discovered = dict(profile_registry._discovered_profiles)
+    original_registered = dict(profile_registry._registered_profiles)
+    original_loaded = profile_registry._loaded
+
+    monkeypatch.setattr(profile_registry, "_discovered_profiles", dict(original_discovered))
+    monkeypatch.setattr(profile_registry, "_registered_profiles", dict(original_registered))
+    monkeypatch.setattr(profile_registry, "_loaded", original_loaded)
+
+    profile_registry.register(
+        AgentProfile(
+            name="planner",
+            description="Plans work.",
+            model="gpt-4o-mini",
+            tools=["read_file"],
+            system_prompt="Plan the work carefully.",
+            sandbox_config={},
+        )
+    )
+
+    captured = {}
+
+    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+        captured["model"] = model
+        captured["tools"] = tools
+        captured["messages"] = conv.messages
+        return "planned"
+
+    monkeypatch.setattr(delegate_module, "run", fake_run)
+    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+
+    result = tools.execute("delegate", {"profile": "planner", "task": "Plan the release."})
+
+    assert result == "planned"
+    assert captured["model"] == "gpt-4o-mini"
+    names_passed = [t["function"]["name"] for t in captured["tools"]]
+    assert names_passed == ["read_file"]
+    assert any(m["role"] == "user" and m["content"] == "Plan the release." for m in captured["messages"])
+
+    monkeypatch.setattr(profile_registry, "_discovered_profiles", original_discovered)
+    monkeypatch.setattr(profile_registry, "_registered_profiles", original_registered)
+    monkeypatch.setattr(profile_registry, "_loaded", original_loaded)
+    delegate_module._refresh_delegate_schema()
 
 
 # ---------------------------------------------------------------------------
