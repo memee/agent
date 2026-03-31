@@ -12,8 +12,21 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from rich.console import Console
+from rich.text import Text
+
 import agent.context as _ctx
 from agent.scrub import ScrubFilter
+
+_console = Console(highlight=False)
+
+_LEVEL_STYLES: dict[str, str] = {
+    "DEBUG": "dim",
+    "INFO": "green",
+    "WARNING": "yellow bold",
+    "ERROR": "red bold",
+    "CRITICAL": "red bold reverse",
+}
 
 # Standard LogRecord attributes to exclude from the key=value section of human output
 _RECORD_ATTRS = frozenset({
@@ -54,7 +67,7 @@ class JsonFormatter(logging.Formatter):
 
 
 class HumanFormatter(logging.Formatter):
-    """Human-readable formatter for stdout.
+    """Human-readable formatter for stdout with ANSI colours via rich.
 
     Format: [HH:MM:SS] LEVEL agent_name(depth) | message key=value ...
     """
@@ -70,15 +83,25 @@ class HumanFormatter(logging.Formatter):
         extras = {
             k: v
             for k, v in record.__dict__.items()
-            if
-            k not in _RECORD_ATTRS and k not in _CONTEXT_ATTRS and not k.startswith(
-                "_")
+            if k not in _RECORD_ATTRS and k not in _CONTEXT_ATTRS and not k.startswith("_")
         }
-        prefix = f"[{ts}] {record.levelname} {name}({dep}) | {msg}"
+
+        level_style = _LEVEL_STYLES.get(record.levelname, "")
+
+        line = Text()
+        line.append(f"[{ts}]", style="dim")
+        line.append(" ")
+        line.append(f"{record.levelname:<8}", style=level_style)
+        line.append(f"{name}({dep})", style="cyan")
+        line.append(" | ", style="dim")
+        line.append(msg)
         if extras:
             kv = " ".join(f"{k}={v}" for k, v in extras.items())
-            return f"{prefix} {kv}"
-        return prefix
+            line.append(f" {kv}", style="dim")
+
+        with _console.capture() as cap:
+            _console.print(line, end="")
+        return cap.get()
 
 
 class ContextFilter(logging.Filter):

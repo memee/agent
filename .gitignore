@@ -6,3 +6,5 @@ __pycache__/
 dist/
 .venv/
 *.log
+.cursor
+.codex
