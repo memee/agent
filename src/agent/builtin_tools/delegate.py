@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from agent.client import create_client
+import agent.context as _ctx
+from agent.builtin_tools.parallel_delegate import delegate_async
+from agent.client import create_async_client
 from agent.conversation import Conversation
 from agent.profile import profile_registry, sandbox_from_profile
 from agent.run import run
+from agent.scheduler import scheduler_var
 from agent.validators import http_url_validator
 
 
@@ -52,17 +55,13 @@ def _refresh_delegate_schema() -> None:
         tools._tools["delegate"]["schema"] = _build_delegate_schema()
 
 
-def delegate(profile: str, task: str, image_url: str | None = None) -> str:
+async def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     """Run a sub-agent using a named profile.
 
-    Looks up the named profile from the registry, builds a SandboxConfig
-    from the profile's sandbox config, creates a fresh Conversation with
-    the profile's system prompt, and calls run() with the profile's tool
-    list and model. Returns the sub-agent's final text response.
+    Spawns the sub-agent via delegate_async(), awaits its completion event,
+    and returns the sub-agent's final text response.
 
-    If image_url is provided, the sub-agent's first user message is multimodal
-    (text + image_url content blocks), enabling vision models to see the image.
-    The image_url is validated against the HTTP sandbox before the sub-agent starts.
+    If image_url is provided, it is validated before the sub-agent starts.
     """
     agent_profile = profile_registry.get(profile)
     sandbox = sandbox_from_profile(agent_profile.sandbox_config)
@@ -70,16 +69,31 @@ def delegate(profile: str, task: str, image_url: str | None = None) -> str:
     if image_url:
         http_url_validator(image_url, sandbox.http)
 
-    from agent import tools as registry
+    scheduler = scheduler_var.get()
+    call_id: str | None = _ctx.current_call_id.get()
 
-    client = create_client()
-    conv = Conversation(system_prompt=agent_profile.system_prompt)
-    if image_url:
-        conv.add_user_with_image(task, image_url)
-    else:
-        conv.add_user(task)
-    scoped_tools = registry.to_openai_schema_by_names(agent_profile.tools) or None
-    return run(conv, client, agent_profile.model, registry, tools=scoped_tools, sandbox=sandbox, agent_name=profile)
+    if scheduler is None:
+        # Fallback: run inline without scheduler (backwards compat / tests without scheduler)
+        from agent import tools as registry
+
+        client = create_async_client()
+        conv = Conversation(system_prompt=agent_profile.system_prompt)
+        if image_url:
+            conv.add_user_with_image(task, image_url)
+        else:
+            conv.add_user(task)
+        scoped_tools = registry.to_openai_schema_by_names(agent_profile.tools) or None
+        return await run(conv, client, agent_profile.model, registry, tools=scoped_tools, sandbox=sandbox, agent_name=profile)
+
+    # Spawn child agent asynchronously
+    await delegate_async(profile, task, image_url)
+
+    # Wait for the result via the event registered by delegate_async
+    if call_id and call_id in scheduler._events:
+        await scheduler._events[call_id].wait()
+        return scheduler.get_result(call_id) or ""
+
+    return ""
 
 
 # Register the delegate tool manually with a dynamic schema.

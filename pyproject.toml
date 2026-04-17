@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "aiosqlite>=0.20",
     "httpx>=0.28.1",
     "openai>=1.0",
     "Pillow>=11.0",
@@ -17,7 +18,10 @@ dependencies = [
 ]
 
 [tool.uv]
-dev-dependencies = ["pytest>=8.0"]
+dev-dependencies = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["hatchling"]

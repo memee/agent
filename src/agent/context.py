@@ -14,6 +14,8 @@ parent_run_id: ContextVar[str | None] = ContextVar("parent_run_id", default=None
 depth: ContextVar[int] = ContextVar("depth", default=0)
 agent_name: ContextVar[str] = ContextVar("agent_name", default="main")
 iteration: ContextVar[int] = ContextVar("iteration", default=0)
+agent_id: ContextVar[str | None] = ContextVar("agent_id", default=None)
+current_call_id: ContextVar[str | None] = ContextVar("current_call_id", default=None)
 
 
 def set_run_context(name: str = "main") -> None:

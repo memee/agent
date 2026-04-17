@@ -15,24 +15,21 @@ def test_delegate_in_openai_schema():
     assert any(s["function"]["name"] == "delegate" for s in schemas)
 
 
-def test_delegate_uses_profile_tools(monkeypatch):
+async def test_delegate_uses_profile_tools(monkeypatch):
     """delegate should call run() with only the tools listed in the profile."""
     from agent.builtin_tools import delegate as delegate_module
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+    async def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["tools"] = tools
         captured["model"] = model
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
 
-    tools.execute("delegate", {
-        "profile": "researcher",
-        "task": "Find information about Python.",
-    })
+    await delegate_module.delegate(profile="researcher", task="Find information about Python.")
 
     # Only researcher profile tools should be passed
     assert captured["tools"] is not None
@@ -42,20 +39,20 @@ def test_delegate_uses_profile_tools(monkeypatch):
     assert "delegate" not in names_passed  # delegate is not in researcher profile
 
 
-def test_delegate_uses_profile_model(monkeypatch):
+async def test_delegate_uses_profile_model(monkeypatch):
     """delegate should use the model from the profile."""
     from agent.builtin_tools import delegate as delegate_module
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+    async def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["model"] = model
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
 
-    tools.execute("delegate", {"profile": "researcher", "task": "some task"})
+    await delegate_module.delegate(profile="researcher", task="some task")
     assert captured["model"] == "gpt-4o-mini"
 
 
@@ -525,42 +522,42 @@ def test_write_file_path_outside_base_dir_blocked(tmp_path):
 # delegate image_url
 # ---------------------------------------------------------------------------
 
-def test_delegate_no_image_url_produces_plain_message(monkeypatch):
+async def test_delegate_no_image_url_produces_plain_message(monkeypatch):
     from agent.builtin_tools import delegate as delegate_module
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+    async def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["messages"] = conv.messages
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
 
-    tools.execute("delegate", {"profile": "researcher", "task": "Do research."})
+    await delegate_module.delegate(profile="researcher", task="Do research.")
 
     user_msg = next(m for m in captured["messages"] if m["role"] == "user")
     assert user_msg["content"] == "Do research."
 
 
-def test_delegate_with_image_url_produces_multimodal_message(monkeypatch):
+async def test_delegate_with_image_url_produces_multimodal_message(monkeypatch):
     from agent.builtin_tools import delegate as delegate_module
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+    async def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["messages"] = conv.messages
         return "done"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
     monkeypatch.setattr(delegate_module, "http_url_validator", lambda url, sandbox: url)
 
-    tools.execute("delegate", {
-        "profile": "researcher",
-        "task": "Analyze the image.",
-        "image_url": "https://example.com/photo.png",
-    })
+    await delegate_module.delegate(
+        profile="researcher",
+        task="Analyze the image.",
+        image_url="https://example.com/photo.png",
+    )
 
     user_msg = next(m for m in captured["messages"] if m["role"] == "user")
     assert isinstance(user_msg["content"], list)
@@ -568,19 +565,19 @@ def test_delegate_with_image_url_produces_multimodal_message(monkeypatch):
     assert user_msg["content"][1] == {"type": "image_url", "image_url": {"url": "https://example.com/photo.png"}}
 
 
-def test_delegate_private_ip_in_image_url_raises_before_subagent(monkeypatch):
+async def test_delegate_private_ip_in_image_url_raises_before_subagent(monkeypatch):
     from agent.builtin_tools import delegate as delegate_module
 
     fake_run = MagicMock()
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
 
     with pytest.raises(PermissionError):
-        tools.execute("delegate", {
-            "profile": "researcher",
-            "task": "Analyze.",
-            "image_url": "http://192.168.1.100/image.png",
-        })
+        await delegate_module.delegate(
+            profile="researcher",
+            task="Analyze.",
+            image_url="http://192.168.1.100/image.png",
+        )
 
     fake_run.assert_not_called()
 
@@ -637,7 +634,7 @@ def test_delegate_schema_refreshes_after_programmatic_registration(monkeypatch):
     delegate_module._refresh_delegate_schema()
 
 
-def test_delegate_executes_programmatically_registered_profile(monkeypatch):
+async def test_delegate_executes_programmatically_registered_profile(monkeypatch):
     """delegate can execute a profile registered after module import."""
     from agent.profile import profile_registry, AgentProfile
     from agent.builtin_tools import delegate as delegate_module
@@ -663,16 +660,16 @@ def test_delegate_executes_programmatically_registered_profile(monkeypatch):
 
     captured = {}
 
-    def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
+    async def fake_run(conv, client, model, registry, tools=None, sandbox=None, max_iterations=10, **kwargs):
         captured["model"] = model
         captured["tools"] = tools
         captured["messages"] = conv.messages
         return "planned"
 
     monkeypatch.setattr(delegate_module, "run", fake_run)
-    monkeypatch.setattr(delegate_module, "create_client", MagicMock())
+    monkeypatch.setattr(delegate_module, "create_async_client", MagicMock())
 
-    result = tools.execute("delegate", {"profile": "planner", "task": "Plan the release."})
+    result = await delegate_module.delegate(profile="planner", task="Plan the release.")
 
     assert result == "planned"
     assert captured["model"] == "gpt-4o-mini"

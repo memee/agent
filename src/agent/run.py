@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import contextvars as _cv
+import inspect
 import json
 import logging
 import time
@@ -21,9 +23,9 @@ from agent.secrets import SecretsStore
 logger = logging.getLogger("agent")
 
 
-def run(
+async def run(
     messages: Conversation,
-    client: "openai.OpenAI",
+    client: "openai.AsyncOpenAI",
     model: str,
     registry: ToolsRegistry,
     tools: list[dict] | None = None,
@@ -43,16 +45,28 @@ def run(
     overwrite the parent's context variables.
     """
     ctx = _cv.copy_context()
-    return ctx.run(
-        _run_in_context,
-        messages, client, model, registry, tools, sandbox, max_iterations, agent_name, secrets,
-        max_completion_tokens, hitl_handler,
-    )
+    # Run the async inner function inside a copied context.
+    # We use a Task with the copied context to isolate ContextVars.
+    loop = asyncio.get_event_loop()
+    future: asyncio.Future[str] = loop.create_future()
+
+    async def _wrapper() -> None:
+        try:
+            result = await _run_in_context(
+                messages, client, model, registry, tools, sandbox,
+                max_iterations, agent_name, secrets, max_completion_tokens, hitl_handler,
+            )
+            future.set_result(result)
+        except Exception as exc:
+            future.set_exception(exc)
+
+    task = asyncio.ensure_future(ctx.run(_wrapper))  # type: ignore[arg-type]
+    return await future
 
 
-def _run_in_context(
+async def _run_in_context(
     messages: Conversation,
-    client: "openai.OpenAI",
+    client: "openai.AsyncOpenAI",
     model: str,
     registry: ToolsRegistry,
     tools: list[dict] | None = None,
@@ -81,7 +95,7 @@ def _run_in_context(
             kwargs["max_completion_tokens"] = max_completion_tokens
 
         t0 = time.monotonic()
-        response = client.chat.completions.create(**kwargs)
+        response = await client.chat.completions.create(**kwargs)
         duration_ms = round((time.monotonic() - t0) * 1000, 1)
 
         usage = response.usage
@@ -114,9 +128,41 @@ def _run_in_context(
         for tool_call in assistant_message.tool_calls:
             name = tool_call.function.name
             args = json.loads(tool_call.function.arguments)
-            result = str(registry.execute(name, args, sandbox=effective_sandbox, secrets=secrets))
-            messages.add_tool_result(tool_call.id, result)
+            # Set call_id in context so tools (e.g. delegate) can access it
+            _ctx.current_call_id.set(tool_call.id)
+            raw = registry.execute(name, args, sandbox=effective_sandbox, secrets=secrets)
+            # Await coroutines returned by async tools (e.g. delegate)
+            if inspect.iscoroutine(raw):
+                raw = await raw
+            messages.add_tool_result(tool_call.id, str(raw))
 
     raise RuntimeError(
         f"Agent did not produce a final response within {max_iterations} iterations."
     )
+
+
+def run_sync(
+    messages: Conversation,
+    client: "openai.AsyncOpenAI | openai.OpenAI | None" = None,
+    model: str = "",
+    registry: ToolsRegistry | None = None,
+    tools: list[dict] | None = None,
+    sandbox: SandboxConfig | None = None,
+    max_iterations: int = 10,
+    agent_name: str = "main",
+    secrets: SecretsStore | None = None,
+    max_completion_tokens: int | None = None,
+    hitl_handler: HITLHandler | None = None,
+) -> str:
+    """Synchronous wrapper around run() for non-async callers."""
+    from agent.client import create_async_client
+
+    if client is None:
+        client = create_async_client()
+    if registry is None:
+        from agent import tools as _tools
+        registry = _tools
+    return asyncio.run(run(
+        messages, client, model, registry, tools, sandbox,
+        max_iterations, agent_name, secrets, max_completion_tokens, hitl_handler,
+    ))

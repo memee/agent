@@ -1,6 +1,6 @@
 """Tests for run() and registry.execute() instrumentation."""
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -64,7 +64,7 @@ def _make_tool_call_response(tool_name: str, args: dict, call_id: str = "call_1"
 # 7.5 — run() emits "llm_call" log with correct fields
 # ---------------------------------------------------------------------------
 
-def test_run_emits_llm_call_log():
+async def test_run_emits_llm_call_log():
     capture = _LogCapture()
     agent_logger = logging.getLogger("agent")
     agent_logger.addHandler(capture)
@@ -77,13 +77,13 @@ def test_run_emits_llm_call_log():
         usage.total_tokens = 15
 
         client = MagicMock()
-        client.chat.completions.create.return_value = _make_text_response("Hello!", usage=usage)
+        client.chat.completions.create = AsyncMock(return_value=_make_text_response("Hello!", usage=usage))
 
         registry = ToolsRegistry()
         conv = Conversation()
         conv.add_user("Hi")
 
-        run(conv, client, "gpt-4o", registry)
+        await run(conv, client, "gpt-4o", registry)
 
         llm_records = [r for r in capture.records if r.getMessage() == "llm_call"]
         assert len(llm_records) == 1, f"Expected 1 llm_call, got {len(llm_records)}"
@@ -98,7 +98,7 @@ def test_run_emits_llm_call_log():
         agent_logger.removeHandler(capture)
 
 
-def test_run_llm_call_log_missing_usage():
+async def test_run_llm_call_log_missing_usage():
     """When response.usage is None, token fields are logged as None."""
     capture = _LogCapture()
     agent_logger = logging.getLogger("agent")
@@ -107,13 +107,13 @@ def test_run_llm_call_log_missing_usage():
 
     try:
         client = MagicMock()
-        client.chat.completions.create.return_value = _make_text_response("Hi", usage=None)
+        client.chat.completions.create = AsyncMock(return_value=_make_text_response("Hi", usage=None))
 
         registry = ToolsRegistry()
         conv = Conversation()
         conv.add_user("Hi")
 
-        run(conv, client, "gpt-4o", registry)
+        await run(conv, client, "gpt-4o", registry)
 
         llm_records = [r for r in capture.records if r.getMessage() == "llm_call"]
         assert len(llm_records) == 1

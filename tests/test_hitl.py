@@ -87,10 +87,10 @@ def test_ask_human_calls_handler_and_returns_result():
 # ─── 6.6 sub-agent inherits parent HITL handler via copy_context ──────────────
 
 
-def test_run_hitl_handler_inherited_by_subagent():
+async def test_run_hitl_handler_inherited_by_subagent():
     """Verify that copy_context() in run() propagates the handler to nested calls."""
     import json
-    from unittest.mock import MagicMock
+    from unittest.mock import AsyncMock, MagicMock
 
     from agent.conversation import Conversation
     from agent.registry import ToolsRegistry
@@ -130,13 +130,13 @@ def test_run_hitl_handler_inherited_by_subagent():
         return r
 
     client = MagicMock()
-    client.chat.completions.create.side_effect = [
+    client.chat.completions.create = AsyncMock(side_effect=[
         make_response(msg_with_tool),
         make_response(final_msg),
-    ]
+    ])
 
     messages = Conversation([{"role": "user", "content": "go"}])
-    run(messages, client, "gpt-4o-mini", registry, hitl_handler=stub_handler)
+    await run(messages, client, "gpt-4o-mini", registry, hitl_handler=stub_handler)
 
     assert len(captured) == 1
     assert captured[0] is stub_handler
